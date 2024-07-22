@@ -1,0 +1,55 @@
+#!/bin/bash
+
+if cat /etc/*release | grep ^NAME | grep Red; then
+        if [[ $( grep '^VERSION_ID' /etc/*release | awk -F= '{print $NF}' | bc | cut -d "." -f 1 | cut -d "," -f 1 ) -eq "7" || $( grep '^VERSION_ID' /etc/*release | awk -F= '{print $NF}' | bc | cut -d "." -f 1 | cut -d "," -f 1 ) -eq "6" ]];then
+        current_time=$(date "+%Y.%m.%d-%H.%M.%S")
+		if grep -Fxq "Ciphers chacha20-poly1305@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr,aes128-gcm@openssh.com,aes256-gcm@openssh.com" /etc/ssh/ssh_config && grep -Fxq "Ciphers chacha20-poly1305@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr,aes128-gcm@openssh.com,aes256-gcm@openssh.com" /etc/ssh/sshd_config; then
+		  
+		   echo "Cipher Vulnerability Algorithm Remediation is already done"
+		
+		else
+			new_sshd_fileName="sshd_config_cipher_key_bak".$current_time
+			new_ssh_fileName="ssh_config_cipher_key_bak".$current_time
+			cp -p /etc/ssh/sshd_config /etc/ssh/$new_sshd_fileName
+			cp -p /etc/ssh/ssh_config /etc/ssh/$new_ssh_fileName
+			sed -i 's/^Ciphers/#Ciphers/g' /etc/ssh/ssh_config
+			sed -i 's/^Ciphers/#Ciphers/g' /etc/ssh/sshd_config
+			a=$(grep "^#Match User" /etc/ssh/sshd_config | wc -l)
+			if [[ $a -eq 1 ]]; then
+			 echo "Ciphers chacha20-poly1305@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr,aes128-gcm@openssh.com,aes256-gcm@openssh.com" | tee -a /etc/ssh/sshd_config >/dev/null
+			 echo "Ciphers chacha20-poly1305@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr,aes128-gcm@openssh.com,aes256-gcm@openssh.com" | tee -a /etc/ssh/ssh_config >/dev/null
+
+			else
+			  sed -i '/^Match User/i Ciphers chacha20-poly1305@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr,aes128-gcm@openssh.com,aes256-gcm@openssh.com' /etc/ssh/sshd_config
+			  echo "Ciphers chacha20-poly1305@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr,aes128-gcm@openssh.com,aes256-gcm@openssh.com" | tee -a /etc/ssh/ssh_config >/dev/null
+			fi
+
+			 systemctl restart sshd
+			 sleep 10
+			 service_status=$(systemctl is-active sshd)
+
+			 if [[ $service_status == "inactive" ]]; then
+					# Start the service if it's not already running
+				echo "sshd service is not active Hence , Rollbacking the backup configuration file"
+					cp -p -f /etc/ssh/$new_sshd_fileName /etc/ssh/sshd_config
+					cp -p -f /etc/ssh/$new_ssh_fileName /etc/ssh/ssh_config
+
+			 else
+			   ssh -o StrictHostKeyChecking=yes  -vvv localhost 2> ./ssh_cipher_key_status.txt
+			   if grep -q -w "chacha20-poly1305@openssh.com" ./ssh_cipher_key_status.txt && grep -q -w "aes128-ctr" ./ssh_cipher_key_status.txt && grep -q -w "aes192-ctr" ./ssh_cipher_key_status.txt && grep -q -w "aes128-gcm@openssh.com" ./ssh_cipher_key_status.txt && grep -q -w  "aes256-gcm@openssh.com" ./ssh_cipher_key_status.txt && grep -q -w  "aes256-ctr" ./ssh_cipher_key_status.txt; then
+				 echo "Cipher Vulnerability Algorithm Remediation is done"
+			   else
+				echo "Some Cipher Vulnerability algorithms are not found and we are rollbacking the backup configuration file"
+				cp -p -f /etc/ssh/$new_sshd_fileName /etc/ssh/sshd_config
+					cp -p -f /etc/ssh/$new_ssh_fileName /etc/ssh/ssh_config
+			   fi
+			fi
+         fi
+        elif [[ $( grep '^VERSION_ID' /etc/*release | awk -F= '{print $NF}' | bc | cut -d "." -f 1 | cut -d "," -f 1 ) -eq "8" || $( grep '^VERSION_ID' /etc/*release | awk -F= '{print $NF}' | bc | cut -d "." -f 1 | cut -d "," -f 1 ) -eq "9" ]];then
+         echo 'RedHat 8'
+        else
+         exit 1;
+        fi
+else
+        exit 1;
+fi
